@@ -13,12 +13,8 @@ void printNum()
     npClear();
 }
 
-// Definindo as cores RGB
-#define VERDE {0, 1, 0}    // Verde
-#define VERMELHO {1, 0, 0} // Vermelho
-#define PRETO {0, 0, 0}    // Apagado (Preto)
 
-// Matriz 5x5 de LEDs, inicializada com todos desligados
+
 int OFF[5][5][3] = {
     {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
     {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
@@ -26,90 +22,55 @@ int OFF[5][5][3] = {
     {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
     {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}}};
 
-// Função para atualizar os setores de acordo com o comando
 
+
+int Cor_resistor[5][5][3];
+
+int cores_led[10][3] = {
+    {0, 0, 0},      // preto
+    {77, 56, 128},    // marrom
+    {1, 0, 0},      // vermelho
+    {71, 56, 0},    // laranja
+    {97, 100, 0},   // amarelo
+    {0, 1, 0},      // verde
+    {0, 0, 1},      // azul
+    {1, 0, 1},      // lilás (violeta)
+    {100, 98, 100}, // cinza
+    {1, 1, 1}       // branco
+};
+
+void Enviar_cores(int cor1, int cor2, int cor3)
+{
+    int cores[3][3] = {
+        {cores_led[cor1][0], cores_led[cor1][1], cores_led[cor1][2]},
+        {cores_led[cor2][0], cores_led[cor2][1], cores_led[cor2][2]},
+        {cores_led[cor3][0], cores_led[cor3][1], cores_led[cor3][2]}
+    };
+
+    for (int linha = 0; linha < 5; linha++) {
+        for (int coluna = 0; coluna < 5; coluna++) {
+            if (coluna % 2 == 0) {
+                // coluna par: colocar cor
+                int qual_cor = coluna / 2; // 0 para cor1, 1 para cor2, 2 para cor3
+                Cor_resistor[linha][coluna][0] = cores[qual_cor][0]; // R
+                Cor_resistor[linha][coluna][1] = cores[qual_cor][1]; // G
+                Cor_resistor[linha][coluna][2] = cores[qual_cor][2]; // B
+            } else {
+                // coluna ímpar: preto (apagado)
+                Cor_resistor[linha][coluna][0] = 0;
+                Cor_resistor[linha][coluna][1] = 0;
+                Cor_resistor[linha][coluna][2] = 0;
+            }
+        }
+    }
+
+    printNum();
+    desenhaSprite(Cor_resistor, 1);
+}
 
 
 void DesligaMatriz()
 {
     desenhaSprite(OFF, intensidade);
     printNum();
-}
-
-// Função para atualizar os setores de acordo com o comando
-void Atualizar_Setor(int setor, int comando) {
-    // Comando 1 para ligar o setor, 0 para desligar
-    int cor_ligado[3] = {0, 128, 0};    // Verde para ligado
-    int cor_desligado[3] = {128, 0, 0}; // Vermelho para desligado
-
-    // Define os intervalos de cada setor na matriz
-    switch (setor) {
-        case 1:
-            for (int i = 0; i < 2; i++) {
-                for (int j = 0; j < 2; j++) {
-                    if (comando == 1) {
-                        OFF[i][j][0] = cor_ligado[0];
-                        OFF[i][j][1] = cor_ligado[1];
-                        OFF[i][j][2] = cor_ligado[2];
-                    } else {
-                        OFF[i][j][0] = cor_desligado[0];
-                        OFF[i][j][1] = cor_desligado[1];
-                        OFF[i][j][2] = cor_desligado[2];
-                    }
-                }
-            }
-            break;
-        case 2:
-            for (int i = 0; i < 2; i++) {
-                for (int j = 3; j < 5; j++) {
-                    if (comando == 1) {
-                        OFF[i][j][0] = cor_ligado[0];
-                        OFF[i][j][1] = cor_ligado[1];
-                        OFF[i][j][2] = cor_ligado[2];
-                    } else {
-                        OFF[i][j][0] = cor_desligado[0];
-                        OFF[i][j][1] = cor_desligado[1];
-                        OFF[i][j][2] = cor_desligado[2];
-                    }
-                }
-            }
-            break;
-        case 3:
-            for (int i = 3; i < 5; i++) {
-                for (int j = 0; j < 2; j++) {
-                    if (comando == 1) {
-                        OFF[i][j][0] = cor_ligado[0];
-                        OFF[i][j][1] = cor_ligado[1];
-                        OFF[i][j][2] = cor_ligado[2];
-                    } else {
-                        OFF[i][j][0] = cor_desligado[0];
-                        OFF[i][j][1] = cor_desligado[1];
-                        OFF[i][j][2] = cor_desligado[2];
-                    }
-                }
-            }
-            break;
-        case 4:
-            for (int i = 3; i < 5; i++) {
-                for (int j = 3; j < 5; j++) {
-                    if (comando == 1) {
-                        OFF[i][j][0] = cor_ligado[0];
-                        OFF[i][j][1] = cor_ligado[1];
-                        OFF[i][j][2] = cor_ligado[2];
-                    } else {
-                        OFF[i][j][0] = cor_desligado[0];
-                        OFF[i][j][1] = cor_desligado[1];
-                        OFF[i][j][2] = cor_desligado[2];
-                    }
-                }
-            }
-            break;
-        default:
-            break;
-    }
-
-    // Após atualizar os LEDs, você pode chamar a função para atualizar a matriz na interface ou hardware.
-    desenhaSprite(OFF, 1);
-    printNum();
-    
 }
