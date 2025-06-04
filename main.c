@@ -40,9 +40,8 @@
 #define SERVO_PIN 15          // Servo para janela
 #define LIGHT_PIN 14          // Relé/LED para luz
 #define ILUMINACAO_ALVO 65.0f // Iluminação padrão (65%)
-#define JANELA_STEP 5         // Incremento de abertura da janela (5%)
 
-#define WS2812_PIN 7 // GPIO para matriz de LEDs WS2812
+#define WS2812_PIN 7     // GPIO para matriz de LEDs WS2812
 #define LED_BLUE_PIN 12  // GPIO12 - LED azul
 #define LED_GREEN_PIN 11 // GPIO11 - LED verde
 #define LED_RED_PIN 13   // GPIO13 - LED vermelho
@@ -108,7 +107,7 @@ static Comodo comodo_atual = {.nome = "sala", .iluminacao_alvo = ILUMINACAO_ALVO
 #define ERROR_printf printf
 #endif
 
-#define TEMP_WORKER_TIME_S 10
+#define TEMP_WORKER_TIME_S 2 // Reduzido de 10 para 2 segundos para resposta mais rápida
 #define MQTT_KEEP_ALIVE_S 60
 #define MQTT_SUBSCRIBE_QOS 1
 #define MQTT_PUBLISH_QOS 1
@@ -249,8 +248,8 @@ int main(void)
     while (!state.connect_done || mqtt_client_is_connected(state.mqtt_client_inst))
     {
         cyw43_arch_poll();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10000));
-        acender_matriz_janela(sala_janela);
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(1000));
+        acender_matriz_janela(sala_janela); // Mantido no loop para garantir funcionamento
     }
 
     INFO_printf("mqtt client exiting\n");
@@ -349,10 +348,6 @@ static void unsub_request_cb(void *arg, err_t err)
 static void sub_unsub_topics(MQTT_CLIENT_DATA_T *state, bool sub)
 {
     mqtt_request_cb_t cb = sub ? sub_request_cb : unsub_request_cb;
-    mqtt_sub_unsub(state->mqtt_client_inst, full_topic(state, "/led"), MQTT_SUBSCRIBE_QOS, cb, state, sub);
-    mqtt_sub_unsub(state->mqtt_client_inst, full_topic(state, "/print"), MQTT_SUBSCRIBE_QOS, cb, state, sub);
-    mqtt_sub_unsub(state->mqtt_client_inst, full_topic(state, "/ping"), MQTT_SUBSCRIBE_QOS, cb, state, sub);
-    mqtt_sub_unsub(state->mqtt_client_inst, full_topic(state, "/exit"), MQTT_SUBSCRIBE_QOS, cb, state, sub);
     mqtt_sub_unsub(state->mqtt_client_inst, full_topic(state, "/casa/sala/select"), MQTT_SUBSCRIBE_QOS, cb, state, sub);
     mqtt_sub_unsub(state->mqtt_client_inst, full_topic(state, "/casa/sala/luz/set"), MQTT_SUBSCRIBE_QOS, cb, state, sub);
     mqtt_sub_unsub(state->mqtt_client_inst, full_topic(state, "/casa/sala/janela/set"), MQTT_SUBSCRIBE_QOS, cb, state, sub);
@@ -361,6 +356,9 @@ static void sub_unsub_topics(MQTT_CLIENT_DATA_T *state, bool sub)
     mqtt_sub_unsub(state->mqtt_client_inst, full_topic(state, "/casa/sala/modo"), MQTT_SUBSCRIBE_QOS, cb, state, sub);
     mqtt_sub_unsub(state->mqtt_client_inst, full_topic(state, "/casa/sala/modo_dormir"), MQTT_SUBSCRIBE_QOS, cb, state, sub);
 }
+
+// Variável estática para evitar reentrância no processamento de modo
+static bool publicando_modo = false;
 
 static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags)
 {
@@ -487,19 +485,23 @@ static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t f
     }
     else if (strcmp(basic_topic, "/casa/sala/modo") == 0)
     {
-        if (!comodo_atual.modo_dormir)
+        if (!comodo_atual.modo_dormir && !publicando_modo)
         {
+            publicando_modo = true; // Evitar reentrância
             if (lwip_stricmp((const char *)state->data, "auto") == 0)
             {
                 INFO_printf("Received /casa/sala/modo: auto\n");
                 comodo_atual.modo_auto = true;
+                // Não republicar no mesmo tópico para evitar loop
             }
             else if (lwip_stricmp((const char *)state->data, "manual") == 0)
             {
                 INFO_printf("Received /casa/sala/modo: manual\n");
                 comodo_atual.modo_auto = false;
+                // Não republicar no mesmo tópico para evitar loop
             }
-            publish_all_states(state);
+            publish_all_states(state); // Publica o estado geral, incluindo o modo
+            publicando_modo = false;   // Liberar para próxima mensagem
         }
     }
     else if (strcmp(basic_topic, "/casa/sala/modo_dormir") == 0)
@@ -515,6 +517,12 @@ static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t f
             comodo_atual.janela_pos = 0.0f;
             comodo_atual.modo_auto = false;
             sala_janela = 0.0f;
+            if (!publicando_modo)
+            {
+                publicando_modo = true;
+                mqtt_publish(state->mqtt_client_inst, full_topic(state, "/casa/sala/modo"), "manual", strlen("manual"), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, pub_request_cb, state);
+                publicando_modo = false;
+            }
             publish_all_states(state);
         }
         else if (strcmp((const char *)state->data, "off") == 0)
@@ -522,10 +530,17 @@ static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t f
             INFO_printf("Received /casa/sala/modo_dormir: off\n");
             comodo_atual.modo_dormir = false;
             comodo_atual.modo_auto = true;
+            if (!publicando_modo)
+            {
+                publicando_modo = true;
+                mqtt_publish(state->mqtt_client_inst, full_topic(state, "/casa/sala/modo"), "auto", strlen("auto"), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, pub_request_cb, state);
+                publicando_modo = false;
+            }
             publish_all_states(state);
         }
     }
 }
+
 
 static void mqtt_incoming_publish_cb(void *arg, const char *topic, u32_t tot_len)
 {
@@ -546,6 +561,7 @@ static void temperature_worker_fn(async_context_t *context, async_at_time_worker
     async_context_add_at_time_worker_in_ms(context, worker, TEMP_WORKER_TIME_S * 1000);
 }
 
+
 static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status)
 {
     MQTT_CLIENT_DATA_T *state = (MQTT_CLIENT_DATA_T *)arg;
@@ -559,7 +575,13 @@ static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection
             mqtt_publish(state->mqtt_client_inst, state->mqtt_client_info.will_topic, "1", 1, MQTT_WILL_QOS, true, pub_request_cb, state);
         }
 
-        publish_all_states(state); // Publicar estados iniciais
+        // Garantir os estados iniciais e publicar explicitamente
+        comodo_atual.modo_auto = true; // Confirmar modo automático no início
+        mqtt_publish(state->mqtt_client_inst, full_topic(state, "/casa/sala/modo"), "auto", strlen("auto"), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, pub_request_cb, state);
+        comodo_atual.modo_dormir = false; // Confirmar modo dormir desativado no início
+        mqtt_publish(state->mqtt_client_inst, full_topic(state, "/casa/sala/modo_dormir"), "off", strlen("off"), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, pub_request_cb, state);
+        publish_all_states(state); // Publicar todos os estados iniciais, incluindo modo e modo_dormir
+
         temperature_worker.user_data = state;
         async_context_add_at_time_worker_in_ms(cyw43_arch_async_context(), &temperature_worker, 0);
     }
@@ -634,7 +656,8 @@ static float read_ldr()
     float adc_min = 100.0f;
     float adc_max = 4000.0f;
     float light = 100.0f * (adc_max - media) / (adc_max - adc_min);
-    light = light < 0.0f ? 0.0f : light > 100.0f ? 100.0f : light;
+    light = light < 0.0f ? 0.0f : light > 100.0f ? 100.0f
+                                                 : light;
 
     return light;
 }
@@ -676,10 +699,13 @@ static void init_servo(void)
 
 static void set_janela(float pos)
 {
-    pos = pos < 0.0f ? 0.0f : pos > 100.0f ? 100.0f : pos;
-    uint16_t pulse = 500 + (pos * 2000 / 100); // 500us (0°) a 2500us (180°)
+    pos = pos < 0.0f ? 0.0f : pos > 100.0f ? 100.0f
+                                           : pos;
+    uint16_t pulse = 500 + (pos * 2000 / 100); // 500us (0°) to 2500us (180°)
     pwm_set_gpio_level(SERVO_PIN, pulse);
     comodo_atual.janela_pos = pos;
+    sala_janela = pos; // Atualizar variável global
+    // acender_matriz_janela(sala_janela); // Comentado conforme sua alteração
 }
 
 static void set_luz(bool on)
@@ -704,43 +730,75 @@ static void automacao_iluminacao(MQTT_CLIENT_DATA_T *state)
 {
     float luz_atual = read_ldr();
     float alvo = comodo_atual.iluminacao_alvo;
-    float tolerancia = 2.0f; // ±2% de tolerância
+    float tolerancia = 2.0f; // Tolerância de ±2%
+    float diferenca = fabs(luz_atual - alvo);
+    float incremento;
 
-    if (luz_atual < (alvo - tolerancia) && comodo_atual.janela_pos < 100.0f)
+    // Escolher incremento adaptativo baseado na diferença
+    if (diferenca > 20.0f)
     {
-        comodo_atual.janela_pos += JANELA_STEP;
-        if (comodo_atual.janela_pos > 100.0f) comodo_atual.janela_pos = 100.0f;
-        set_janela(comodo_atual.janela_pos);
-        sala_janela = comodo_atual.janela_pos;
-        publish_all_states(state);
+        incremento = 5.0f; // Incremento maior para diferenças grandes
     }
-    else if (luz_atual < (alvo - tolerancia) && comodo_atual.janela_pos >= 100.0f && !comodo_atual.luz_ligada)
+    else if (diferenca > 10.0f)
     {
-        set_luz(true);
-        publish_all_states(state);
+        incremento = 2.0f; // Incremento médio para diferenças moderadas
     }
-    else if (luz_atual > (alvo + tolerancia) && comodo_atual.janela_pos > 0.0f)
+    else
     {
-        comodo_atual.janela_pos -= JANELA_STEP;
-        if (comodo_atual.janela_pos < 0.0f) comodo_atual.janela_pos = 0.0f;
-        set_janela(comodo_atual.janela_pos);
-        sala_janela = comodo_atual.janela_pos;
-        if (luz_atual > (alvo + tolerancia) && comodo_atual.luz_ligada && comodo_atual.janela_pos == 0.0f)
+        incremento = 1.0f; // Incremento pequeno perto do alvo
+    }
+
+    // Ajustar a janela para maximizar a luz natural
+    if (diferenca > tolerancia)
+    {
+        if (luz_atual < (alvo - tolerancia) && comodo_atual.janela_pos < 100.0f)
+        {
+            comodo_atual.janela_pos += incremento;
+            if (comodo_atual.janela_pos > 100.0f)
+                comodo_atual.janela_pos = 100.0f;
+            set_janela(comodo_atual.janela_pos);
+            sala_janela = comodo_atual.janela_pos;
+            publish_all_states(state);
+            sleep_ms(100);          // Atraso para estabilizar a leitura
+            luz_atual = read_ldr(); // Atualizar leitura após ajustar
+            diferenca = fabs(luz_atual - alvo);
+        }
+        else if (luz_atual > (alvo + tolerancia) && comodo_atual.janela_pos > 0.0f)
+        {
+            comodo_atual.janela_pos -= incremento;
+            if (comodo_atual.janela_pos < 0.0f)
+                comodo_atual.janela_pos = 0.0f;
+            set_janela(comodo_atual.janela_pos);
+            sala_janela = comodo_atual.janela_pos;
+            publish_all_states(state);
+            sleep_ms(100);          // Atraso para estabilizar a leitura
+            luz_atual = read_ldr(); // Atualizar leitura após ajustar
+            diferenca = fabs(luz_atual - alvo);
+        }
+
+        // Desligar a luz se a iluminação for suficiente após ajustar a janela
+        if (comodo_atual.luz_ligada && luz_atual >= (alvo - tolerancia))
         {
             set_luz(false);
+            comodo_atual.luz_ligada = false;
+            publish_all_states(state);
+            sleep_ms(100);          // Atraso para estabilizar a leitura
+            luz_atual = read_ldr(); // Atualizar leitura após desligar
+            diferenca = fabs(luz_atual - alvo);
         }
+    }
+    // Ligar a luz apenas se a janela estiver totalmente aberta e ainda for insuficiente
+    if (diferenca > tolerancia && luz_atual < (alvo - tolerancia) && comodo_atual.janela_pos >= 100.0f && !comodo_atual.luz_ligada)
+    {
+        set_luz(true);
+        comodo_atual.luz_ligada = true;
+        publish_all_states(state);
+    }else{
+        set_luz(false);
+        comodo_atual.luz_ligada = false;
         publish_all_states(state);
     }
 }
-
-static void publish_all_states(MQTT_CLIENT_DATA_T *state)
-{
-    publish_estado(state);
-    publish_janela_estado(state);
-    publish_janela_pos(state);
-    publish_luz_estado(state);
-}
-
 static void publish_estado(MQTT_CLIENT_DATA_T *state)
 {
     char estado_key[MQTT_TOPIC_LEN];
@@ -750,6 +808,14 @@ static void publish_estado(MQTT_CLIENT_DATA_T *state)
              "{\"luz\":%.2f,\"janela\":%.2f,\"luz_ligada\":%d,\"modo\":\"%s\",\"modo_dormir\":%d,\"iluminacao_alvo\":%.2f}",
              read_ldr(), comodo_atual.janela_pos, comodo_atual.luz_ligada, comodo_atual.modo_auto ? "auto" : "manual", comodo_atual.modo_dormir, comodo_atual.iluminacao_alvo);
     mqtt_publish(state->mqtt_client_inst, estado_key, estado_str, strlen(estado_str), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, pub_request_cb, state);
+}
+
+static void publish_all_states(MQTT_CLIENT_DATA_T *state)
+{
+    publish_estado(state); // Publica o estado geral, incluindo o modo
+    publish_janela_estado(state);
+    publish_janela_pos(state);
+    publish_luz_estado(state);
 }
 
 static void publish_janela_estado(MQTT_CLIENT_DATA_T *state)
