@@ -47,6 +47,8 @@
 #define LED_RED_PIN 13   // GPIO13 - LED vermelho
 #define BUZZER_PIN 10    // Pino do buzzer
 
+int flag = 1;
+
 #ifndef TEMPERATURE_UNITS
 #define TEMPERATURE_UNITS 'C'
 #endif
@@ -355,6 +357,7 @@ static void sub_unsub_topics(MQTT_CLIENT_DATA_T *state, bool sub)
     mqtt_sub_unsub(state->mqtt_client_inst, full_topic(state, "/casa/sala/luz/ligar"), MQTT_SUBSCRIBE_QOS, cb, state, sub);
     mqtt_sub_unsub(state->mqtt_client_inst, full_topic(state, "/casa/sala/modo"), MQTT_SUBSCRIBE_QOS, cb, state, sub);
     mqtt_sub_unsub(state->mqtt_client_inst, full_topic(state, "/casa/sala/modo_dormir"), MQTT_SUBSCRIBE_QOS, cb, state, sub);
+    mqtt_sub_unsub(state->mqtt_client_inst, full_topic(state, "/casa/sala/janela/estado"), MQTT_SUBSCRIBE_QOS, cb, state, sub);
 }
 
 // Variável estática para evitar reentrância no processamento de modo
@@ -417,15 +420,12 @@ static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t f
     }
     else if (strcmp(basic_topic, "/casa/sala/luz/set") == 0)
     {
-        if (!comodo_atual.modo_dormir && !comodo_atual.modo_auto)
+        float nova_alvo = atof((const char *)state->data);
+        if (nova_alvo >= 0.0f && nova_alvo <= 100.0f)
         {
-            float nova_alvo = atof((const char *)state->data);
-            if (nova_alvo >= 0.0f && nova_alvo <= 100.0f)
-            {
-                INFO_printf("Received /casa/sala/luz/set: %.2f\n", nova_alvo);
-                comodo_atual.iluminacao_alvo = nova_alvo;
-                publish_estado(state);
-            }
+            INFO_printf("Received /casa/sala/luz/set: %.2f\n", nova_alvo);
+            comodo_atual.iluminacao_alvo = nova_alvo;
+            publish_estado(state); // Publicar o novo valor no estado geral
         }
     }
     else if (strcmp(basic_topic, "/casa/sala/janela/set") == 0)
@@ -487,21 +487,20 @@ static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t f
     {
         if (!comodo_atual.modo_dormir && !publicando_modo)
         {
-            publicando_modo = true; // Evitar reentrância
+            publicando_modo = true;
             if (lwip_stricmp((const char *)state->data, "auto") == 0)
             {
                 INFO_printf("Received /casa/sala/modo: auto\n");
+                flag = 1;
                 comodo_atual.modo_auto = true;
-                // Não republicar no mesmo tópico para evitar loop
             }
             else if (lwip_stricmp((const char *)state->data, "manual") == 0)
             {
                 INFO_printf("Received /casa/sala/modo: manual\n");
                 comodo_atual.modo_auto = false;
-                // Não republicar no mesmo tópico para evitar loop
             }
-            publish_all_states(state); // Publica o estado geral, incluindo o modo
-            publicando_modo = false;   // Liberar para próxima mensagem
+            publish_all_states(state);
+            publicando_modo = false;
         }
     }
     else if (strcmp(basic_topic, "/casa/sala/modo_dormir") == 0)
@@ -529,6 +528,7 @@ static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t f
         {
             INFO_printf("Received /casa/sala/modo_dormir: off\n");
             comodo_atual.modo_dormir = false;
+            flag = 1;
             comodo_atual.modo_auto = true;
             if (!publicando_modo)
             {
@@ -540,7 +540,6 @@ static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t f
         }
     }
 }
-
 
 static void mqtt_incoming_publish_cb(void *arg, const char *topic, u32_t tot_len)
 {
@@ -558,8 +557,11 @@ static void temperature_worker_fn(async_context_t *context, async_at_time_worker
     {
         automacao_iluminacao(state);
     }
+    // Publicar todos os estados periodicamente, independentemente de mudanças
+    publish_all_states(state);
     async_context_add_at_time_worker_in_ms(context, worker, TEMP_WORKER_TIME_S * 1000);
 }
+
 
 
 static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status)
@@ -576,11 +578,17 @@ static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection
         }
 
         // Garantir os estados iniciais e publicar explicitamente
+        flag = 1;
         comodo_atual.modo_auto = true; // Confirmar modo automático no início
         mqtt_publish(state->mqtt_client_inst, full_topic(state, "/casa/sala/modo"), "auto", strlen("auto"), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, pub_request_cb, state);
         comodo_atual.modo_dormir = false; // Confirmar modo dormir desativado no início
         mqtt_publish(state->mqtt_client_inst, full_topic(state, "/casa/sala/modo_dormir"), "off", strlen("off"), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, pub_request_cb, state);
         publish_all_states(state); // Publicar todos os estados iniciais, incluindo modo e modo_dormir
+
+        // Publicar o valor padrão de iluminacao_alvo no tópico /casa/sala/luz/set
+        char alvo_str[16];
+        snprintf(alvo_str, sizeof(alvo_str), "%.2f", ILUMINACAO_ALVO);
+        mqtt_publish(state->mqtt_client_inst, full_topic(state, "/casa/sala/luz/set"), alvo_str, strlen(alvo_str), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, pub_request_cb, state);
 
         temperature_worker.user_data = state;
         async_context_add_at_time_worker_in_ms(cyw43_arch_async_context(), &temperature_worker, 0);
@@ -597,6 +605,7 @@ static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection
         panic("Unexpected status");
     }
 }
+
 
 static void start_client(MQTT_CLIENT_DATA_T *state)
 {
@@ -788,16 +797,23 @@ static void automacao_iluminacao(MQTT_CLIENT_DATA_T *state)
         }
     }
     // Ligar a luz apenas se a janela estiver totalmente aberta e ainda for insuficiente
-    if (diferenca > tolerancia && luz_atual < (alvo - tolerancia) && comodo_atual.janela_pos >= 100.0f && !comodo_atual.luz_ligada)
+    if ((diferenca > tolerancia) && (comodo_atual.janela_pos >= 100.0f) && !comodo_atual.luz_ligada && flag)
     {
         set_luz(true);
         comodo_atual.luz_ligada = true;
         publish_all_states(state);
-    }else{
+        printf("eu mandei ligar\n");
+        flag = 0;
+    }
+
+    if (flag)
+    {
         set_luz(false);
         comodo_atual.luz_ligada = false;
         publish_all_states(state);
+        printf("eu mandei desligar\n");
     }
+    publish_all_states(state);
 }
 static void publish_estado(MQTT_CLIENT_DATA_T *state)
 {
