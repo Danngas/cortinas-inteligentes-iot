@@ -39,6 +39,7 @@ include_directories(${CMAKE_SOURCE_DIR}/lib)
 add_executable(${PROJECT_NAME}
     ${PROJECT_NAME}.c
         lib/ssd1306.c
+        matrizled.c
       
 )
 
@@ -48,7 +49,7 @@ pico_set_program_name(${PROJECT_NAME} "mqtt_client")
 pico_set_program_version(${PROJECT_NAME} "0.1")
 
 # Generate PIO header - matriz de led
-pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/lib/ws2818b.pio)
+pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_SOURCE_DIR}/ws2812.pio)
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(${PROJECT_NAME} 0)
