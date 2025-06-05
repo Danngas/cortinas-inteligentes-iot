@@ -1,144 +1,129 @@
-# Sistema de Cortinas Inteligentes com Controle de Luz
+## Ficha de Proposta de Projeto
 
-**Autor**: Daniel Silva de Souza  
-**Polo**: Bom Jesus da Lapa  
-**Data**: 04/06/2025  
+**Nome do Aluno:** Daniel Silva de Souza  
+**Polo:** Bom Jesus da Lapa  
+**Data:** 04/06/2025  
 
-Este repositório contém o código base para o projeto de **Automação Residencial: Sistema de Cortinas Inteligentes com Controle de Luz**, desenvolvido como parte da disciplina de IoT. O projeto será implementado na placa **BitDogLab** com o microcontrolador **Raspberry Pi Pico W**, utilizando o protocolo **MQTT** para comunicação. O sistema controlará cortinas de forma inteligente, ajustando sua abertura em níveis intermediários (0% a 100%) com base na intensidade de luz ambiente medida por um sensor LDR, com modos automático e manual. Este é o repositório inicial, contendo o código base fornecido pelo professor (publicação de temperatura e controle de LED via MQTT) e as bibliotecas necessárias para os periféricos. O desenvolvimento do sistema de cortinas será realizado a partir deste ponto.
+**Título do Projeto:**  
+Sistema de Cortinas Inteligentes IoT
 
-## Descrição do Projeto
+### Objetivo Geral
 
-O objetivo é criar um sistema IoT que simule cortinas residenciais inteligentes, ajustando a abertura para regular a luz ambiente. O sistema usará:
+Desenvolver um sistema IoT utilizando a placa BitDogLab com o microcontrolador RP2040 para simular o controle de cortinas e iluminação em uma casa inteligente, ajustando a iluminação ambiente de dois cômodos ("sala" e "quarto1") para um valor-alvo (padrão 65%) via sensor LDR. O sistema utiliza o protocolo MQTT para comunicação, com interface no IoT MQTT Panel e MQTT Explorer, e oferece feedback visual e automação para conforto e eficiência energética.
 
-- **Sensor LDR** (GPIO 28, ADC2): Mede a luz ambiente (0-100%).
-- **LED RGB** (GPIOs 11, 12, 13): Indica o estado da cortina (ex.: azul para fechada, verde para aberta).
-- **Matriz de LEDs WS2812** (GPIO 7): Simula o movimento e nível de abertura da cortina.
-- **Botões** (GPIOs 5, 6): Alternam modos (automático/manual) e confirmam ajustes.
-- **Joystick** (GPIOs 26, 27): Ajusta limites de luz ou abertura manual.
-- **Display OLED** (I2C, GPIOs 14, 15): Exibe luz, abertura da cortina e status.
-- **Buzzer** (GPIO 10): Fornece feedback sonoro para transições e erros.
-- **Wi-Fi/MQTT** (Pico W): Publica dados de luz (`/casa/luz`), estado da cortina (`/casa/cortina/estado`) e recebe comandos (`/casa/cortina/controle`) via IoT MQTT Panel.
+### Descrição Funcional
 
-O código base atual (adaptado de [pico-examples](https://github.com/raspberrypi/pico-examples/tree/master/pico_w/wifi/mqtt)) publica a temperatura do microcontrolador no tópico `/pico_cortinas/temperature` e controla o LED onboard via `/pico_cortinas/led`. Ele será adaptado para implementar as funcionalidades do sistema de cortinas.
+#### Funcionamento do Projeto
 
-## Estrutura do Repositório
+O projeto implementa um sistema de automação residencial que simula o controle de cortinas e iluminação em dois cômodos ("sala" e "quarto1") utilizando a placa BitDogLab. A cortina é simulada pela matriz de LEDs WS2812, onde o brilho (0–100%) representa a claridade entrando no cômodo, e a iluminação é simulada por LEDs RGB, que acendem em branco para indicar luz ligada. O sistema mede a iluminação ambiente com um LDR e ajusta automaticamente os componentes para atingir um valor-alvo configurável (padrão 65%). Ele opera em três modos: manual, automático e dormir, com controle via protocolo MQTT e interface no IoT MQTT Panel (Android) e MQTT Explorer (PC).
 
-```
-├── lib/
-│   ├── font.h            # Definições de fontes para display OLED
-│   ├── matrizled.c       # Funções para controlar a matriz de LEDs WS2812
-│   ├── matrizled.h       # Cabeçalho para matrizled.c
-│   ├── ssd1306.c         # Funções para controlar o display OLED SSD1306
-│   ├── ssd1306.h         # Cabeçalho para ssd1306.c
-│   ├── ws2812.pio        # Programa PIO para LEDs WS2812
-├── CMakeLists.txt        # Configuração de compilação com Pico SDK
-├── lwipopts_examples_common.h  # Configurações LWIP comuns
-├── lwipopts.h            # Configurações LWIP específicas
-├── mbedtls_config_examples_common.h  # Configurações MBedTLS comuns
-├── mbedtls_config.h      # Configurações MBedTLS específicas
-├── main.c                # Código base (publica temperatura, controla LED)
-├── README.md             # Documentação do projeto
-```
 
-## Periféricos Configurados
+#### Modos de Operação
 
-Os seguintes periféricos da placa BitDogLab estão mapeados para os pinos abaixo, prontos para uso com as bibliotecas fornecidas:
+##### Modo Manual
 
-- **Sensor LDR**: GPIO 28 (ADC2) para leitura de luz ambiente.
-- **LED RGB**:
-  - Vermelho: GPIO 13
-  - Verde: GPIO 11
-  - Azul: GPIO 12
-- **Matriz de LEDs WS2812**: GPIO 7 (8 LEDs).
-- **Botões**:
-  - Botão A: GPIO 5 (alternar modos automático/manual)
-  - Botão B: GPIO 6 (confirmar ajustes ou entrar em modo BOOTSEL)
-- **Joystick**:
-  - Eixo X: GPIO 26 (ADC0)
-  - Eixo Y: GPIO 27 (ADC1)
-- **Display OLED**:
-  - I2C: `i2c1`
-  - SDA: GPIO 14
-  - SCL: GPIO 15
-  - Endereço: `0x3C`
-- **Buzzer**: GPIO 10
-- **Wi-Fi**: Configurado com:
-  - SSID: `SUA_REDE_WIFI` (substituir no `main.c`)
-  - Senha: `SUA_SENHA_WIFI` (substituir no `main.c`)
-  - Broker MQTT: `10.0.0.156` (Termux, porta 1883)
-  - Usuário: `admin`
-  - Senha: `admin`
+Permite controle direto via comandos MQTT:
+- `/casa/[comodo]/janela/set <valor>`: Ajusta o brilho da matriz WS2812 (0–100%), simulando a abertura da cortina.
+- `/casa/[comodo]/janela/abrir on/off`: Liga (100%) ou desliga (0%) a matriz.
+- `/casa/[comodo]/luz/ligar on/off`: Acende (branco) ou apaga os LEDs RGB.  
+Comandos são enviados via IoT MQTT Panel ou MQTT Explorer.
 
-## Pré-requisitos
+##### Modo Automático
 
-- **Hardware**:
-  - Placa BitDogLab com Raspberry Pi Pico W
-  - Sensor LDR conectado a GPIO 28 com resistor pull-down (ex.: 10kΩ)
-  - Periféricos listados acima
-- **Software**:
-  - [Pico SDK](https://github.com/raspberrypi/pico-sdk) (versão compatível)
-  - [CMake](https://cmake.org/) e compilador ARM (ex.: `arm-none-eabi-gcc`)
-  - Broker MQTT (ex.: Mosquitto rodando no Termux, IP `10.0.0.156`)
-  - IoT MQTT Panel para monitoramento e controle
-- **Bibliotecas**:
-  - Todas as bibliotecas necessárias estão na pasta `lib/` (baseadas em [BitDogLab/BitDogLab-C](https://github.com/BitDogLab/BitDogLab-C))
+Ajusta o brilho da matriz e o estado dos LEDs RGB com base na leitura do LDR para atingir `iluminacao_alvo` (padrão 65%):
+- Se a iluminação ambiente for menor que o alvo, aumenta o brilho da matriz (simulando abertura da cortina).
+- Se ainda insuficiente com matriz no máximo, acende os LEDs RGB.
+- Se a iluminação for maior que o alvo, reduz o brilho da matriz e desliga os LEDs RGB.  
+Ativado via `/casa/[comodo]/modo auto`.
 
-## Como Compilar e Executar
+##### Modo Dormir
 
-1. **Clone o repositório**:
-   ```bash
-   git clone https://github.com/SEU_USUARIO/CortinasInteligentes-IoT.git
-   cd CortinasInteligentes-IoT
-   ```
+Simula um ambiente escuro, desativando a matriz WS2812 e LEDs RGB:
+- Ativado via `/casa/[comodo]/modo_dormir on`.
+- Desativa o modo automático e ignora comandos manuais.
+- Desativado via `/casa/[comodo]/modo_dormir off`, retornando ao modo automático.  
+Cada cômodo opera de forma independente.
 
-2. **Configure o ambiente**:
-   - Instale o Pico SDK e configure a variável de ambiente `PICO_SDK_PATH`.
-   - Certifique-se de que o CMake e o compilador ARM estão instalados.
+#### Seleção de Cômodo
 
-3. **Atualize as credenciais**:
-   - Edite `main.c` e substitua `WIFI_SSID` e `WIFI_PASSWORD` pelas credenciais da sua rede Wi-Fi.
+O comando `/casa/select <comodo>` alterna entre "sala" e "quarto1", definindo o cômodo ativo para automação e publicação de estados.
 
-4. **Compile o projeto**:
-   ```bash
-   mkdir build
-   cd build
-   cmake ..
-   make
-   ```
+#### Monitoramento e Interface
 
-5. **Carregue o firmware**:
-   - Conecte a placa BitDogLab ao computador via USB.
-   - Copie o arquivo `main.uf2` (gerado em `build/`) para a placa em modo BOOTSEL.
+O sistema publica estados periodicamente (a cada 2 segundos) nos tópicos:
+- `/casa/[comodo]/estado`: JSON com iluminação, brilho da matriz, estado dos LEDs RGB, modo, e `iluminacao_alvo`.
+- `/casa/[comodo]/janela/pos`: Brilho da matriz (0–100%).
+- `/casa/[comodo]/janela/estado`: "on" ou "off".
+- `/casa/[comodo]/luz/estado`: "on" ou "off".
+- `/casa/[comodo]/luz`: Iluminação ambiente medida pelo LDR.
 
-6. **Teste o código base**:
-   - Configure o broker MQTT no Termux (IP `10.0.0.156`, porta 1883, usuário `admin`, senha `admin`).
-   - Use o IoT MQTT Panel para monitorar o tópico `/pico_cortinas/temperature` e controlar o LED via `/pico_cortinas/led` (enviando "On" ou "Off").
+A interface é feita via:
+- **IoT MQTT Panel**: Interface gráfica no Android para enviar comandos e visualizar estados.
+- **MQTT Explorer**: Monitoramento detalhado de tópicos no PC.
 
-## Desenvolvimento Futuro
+**Nota**: Uma foto anexada exibe a interface do IoT MQTT Panel e MQTT Explorer, mostrando os tópicos publicados e os controles configurados para "sala" e "quarto1".
 
-O código base será adaptado para implementar o sistema de cortinas inteligentes com as seguintes funcionalidades:
+#### Lógica por Trás das Funcionalidades
 
-- **Modo Automático**: Ajustar a abertura da cortina (0%, 25%, 50%, 75%, 100%) com base na luz ambiente (limites de 20% e 80%).
-- **Modo Manual**: Controlar a abertura via IoT MQTT Panel (ex.: "abrir:30") ou joystick.
-- **Feedback**:
-  - LED RGB: Cores graduais (azul para fechada, verde para aberta).
-  - Matriz de LEDs: Simular abertura proporcional com animações.
-  - OLED: Exibir luz (%), abertura (%), e status.
-  - Buzzer: Tons para transições e erros.
-- **MQTT**:
-  - Publicar: `/casa/luz` (nível de luz), `/casa/cortina/estado` (abertura).
-  - Assinar: `/casa/cortina/controle` (comandos como "abrir:30", "intensidade:50").
+O sistema utiliza uma arquitetura baseada em MQTT:
+- **Leitura do LDR**: Função `read_ldr()` faz 100 amostras no ADC (GPIO 28), calcula a média, e converte para porcentagem (0–100%).
+- **Automação**: Função `automacao_iluminacao()` ajusta o brilho da matriz e LEDs RGB com incrementos adaptativos (5%, 2%, 1%) para estabilidade.
+- **Controle MQTT**: Função `mqtt_incoming_data_cb()` processa comandos por cômodo, aplicando restrições de modo.
+- **Publicação**: Função `publish_all_states()` atualiza os estados periodicamente.
 
-As bibliotecas na pasta `lib/`) fornecem suporte completo para os periféricos:
-- `matrizled.h`: Controle da matriz WS2812.
-- `ssd1306.h`: Interface com o OLED.
-- `font.h`: Fontes para texto no OLED.
-- `ws2812.pio`: Programa PIO para LEDs WS2812.
+O broker Mosquitto roda no celular via Termux (IP `10.0.0.196`, usuário `admin`, senha `admin`), e a BitDogLab se conecta via Wi-Fi (SSID `Tesla`, senha `123456788`).
 
-## Licença
+#### Pontos Relevantes dos Periféricos e do Código
 
-Este projeto utiliza código adaptado de [pico-examples](https://github.com/raspberrypi/pico-examples) e bibliotecas do repositório [BitDogLab/BitDogLab-C](https://github.com/BitDogLab/BitDogLab-C), sob licença MIT.
+O código, em C com Pico SDK, gerencia:
+- **LDR**: Conectado ao GPIO 28 (ADC2) em divisor de tensão com resistor de 10 kΩ, lê a iluminação ambiente.
+- **Matriz WS2812**: Simula a cortina, com brilho proporcional à claridade.
+- **LEDs RGB**: Simulam a luz, acendendo em branco.
+- **MQTT**: Tópicos estruturados com QoS 1 e retenção.
+- **Interrupções**: Botão de reset com `GPIO_IRQ_EDGE_FALL`.
 
-## Contato
+### Uso dos Periféricos da BitDogLab
 
-Para dúvidas ou contribuições, entre em contato com Daniel Silva de Souza via [e-mail ou outro canal].
+#### Protocolo Wi-Fi
+
+Utilizado para conectar a placa ao broker MQTT (IP `10.0.0.196`) via rede Wi-Fi (SSID `Tesla`, senha `123456788`). O módulo CYW43439 da BitDogLab gerencia a comunicação com o protocolo MQTT, enviando e recebendo comandos e estados.
+
+#### LDR (Light Dependent Resistor)
+
+Conectado ao **GPIO 28 (ADC2)** em um divisor de tensão com um resistor de 10 kΩ:
+- Um terminal do LDR está conectado ao GPIO 28 e ao resistor de 10 kΩ.
+- O outro terminal do LDR está conectado a 3.3V.
+- O outro terminal do resistor está conectado ao GND.  
+O divisor de tensão gera uma tensão proporcional à iluminação ambiente, que é lida pelo ADC (resolução de 12 bits, 0–4095). A função `read_ldr()` converte a leitura em uma porcentagem (0–100%) para uso na automação e publicação no tópico `/casa/[comodo]/luz`.
+
+#### Matriz de LEDs WS2812
+
+Conectada ao **GPIO 7**, a matriz WS2812 simula a cortina:
+- O brilho (0–100%) representa a "abertura" da cortina, simulando a claridade entrando no cômodo.
+- Controlada via PIO com a biblioteca `matrizled.h` (função `acender_matriz_janela()`).
+- Ajustada por comandos MQTT (`/casa/[comodo]/janela/set`) ou automaticamente no modo `auto`.
+
+#### LED RGB
+
+Conectado aos **GPIOs 11 (verde), 12 (azul), 13 (vermelho)**, o LED RGB simula a lâmpada do cômodo:
+- Acende em branco (R,G,B = 1,1,1) quando a luz está ligada.
+- Apaga (R,G,B = 0,0,0) quando a luz está desligada.
+- Controlado via `/casa/[comodo]/luz/ligar on/off` ou automaticamente no modo `auto`.
+
+#### Botões
+
+O **Botão B** (GPIO 6) é usado para reset:
+- Configurado com pull-up interno e interrupção `GPIO_IRQ_EDGE_FALL`.
+- Aciona o reset da placa para modo BOOTSEL, reiniciando o sistema.  
+O debounce é tratado via hardware (pull-up) e software (filtro de eventos na interrupção).
+
+#### Interrupções e Tratamento de Debounce
+
+- **Interrupções**: O botão de reset (GPIO 6) usa `gpio_set_irq_enabled_with_callback()` para detectar borda de descida (`GPIO_IRQ_EDGE_FALL`).
+- **Debounce**: Pull-up interno no GPIO 6 minimiza falsos disparos, e a função `gpio_irq_handler()` processa o evento de forma estável.
+
+
+### Links para Acesso
+
+- **GitHub:** [https://github.com/Danngas/cortinas-inteligentes-iot.git](https://github.com/Danngas/cortinas-inteligentes-iot.git)
+- **Vídeo de Demonstração:** [[INSIRA O LINK AQUI](https://youtu.be/MMXU9150ziU?si=j7rvrBhLgNY5swI7)] 
