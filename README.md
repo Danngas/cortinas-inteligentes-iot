@@ -126,4 +126,4 @@ O debounce é tratado via hardware (pull-up) e software (filtro de eventos na in
 ### Links para Acesso
 
 - **GitHub:** [https://github.com/Danngas/cortinas-inteligentes-iot.git](https://github.com/Danngas/cortinas-inteligentes-iot.git)
-- **Vídeo de Demonstração:** [[INSIRA O LINK AQUI](https://youtu.be/MMXU9150ziU?si=j7rvrBhLgNY5swI7)] 
+- **Vídeo de Demonstração:** [[YouTube](https://youtu.be/MMXU9150ziU?si=j7rvrBhLgNY5swI7)] 
